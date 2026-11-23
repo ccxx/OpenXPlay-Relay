@@ -729,8 +729,14 @@ impl LinuxRelayAdmin {
     fn start_services_with_probe_timeout(self: &Arc<Self>, timeout: Duration) -> Result<()> {
         self.apply_wifi_country();
         if self.runtime.network_services {
-            crate::public_name::local_dns::reset(&self.runtime.local_dns)?;
-            self.admin_hotspot.prepare()?;
+            // external-ap: the AP, its dnsmasq and its NM state belong to another component
+            // (com.tbwj.gateway). Resetting the shared-dns dir would write /etc (read-only on
+            // such hosts) and clearing stale hotspots would delete a connection this process
+            // never created, so neither may run.
+            if self.settings.lock().unwrap().network_mode != "external-ap" {
+                crate::public_name::local_dns::reset(&self.runtime.local_dns)?;
+                self.admin_hotspot.prepare()?;
+            }
         }
         self.inventory.wait_for_probe(timeout);
         let status = self.network_status(&self.settings.lock().unwrap());
