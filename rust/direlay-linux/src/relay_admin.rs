@@ -2306,8 +2306,15 @@ impl LinuxRelayAdmin {
             ) == "ready";
         let network_ready = self.wifi_present(&options.wifi_interface)
             && wifi != Some(false)
-            && (options.settings.network_mode != "shared-wifi"
-                || self.wifi_status().ssid.is_some());
+            && if options.settings.network_mode == "external-ap" {
+                // The AP belongs to another component: presence plus AP mode is all it owes us.
+                crate::network::external_ap_manager::interface_in_ap_mode(
+                    &options.wifi_interface,
+                )
+            } else {
+                options.settings.network_mode != "shared-wifi"
+                    || self.wifi_status().ssid.is_some()
+            };
         let selected = matches!(
             selection.reason(),
             "Selected" | "Connected" | "OnlyCandidate"
@@ -2395,6 +2402,7 @@ impl LinuxRelayAdmin {
             return Ok(());
         }
         if self.network_override.lock().unwrap().is_none()
+            && self.options.settings.network_mode != "external-ap"
             && self
                 .provision
                 .lock()

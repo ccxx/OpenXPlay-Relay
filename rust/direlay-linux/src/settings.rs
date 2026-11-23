@@ -468,7 +468,7 @@ impl Settings {
         {
             return Err(invalid("Invalid mfiRemoteServer"));
         }
-        if !["device-hotspot", "shared-wifi"].contains(&self.network_mode.as_str()) {
+        if !["device-hotspot", "shared-wifi", "external-ap"].contains(&self.network_mode.as_str()) {
             return Err(invalid("Invalid networkMode"));
         }
         if self.wifi_interface.is_empty()

@@ -3,6 +3,8 @@
 // Created by riko chen on 2026-10-15
 /// air play port selector protocol module.
 pub mod air_play_port_selector;
+/// external AP manager protocol module.
+pub mod external_ap_manager;
 /// hotspot address policy protocol module.
 pub mod hotspot_address_policy;
 /// wireless host address protocol module.

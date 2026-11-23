@@ -253,6 +253,30 @@ impl WirelessPlatform for LinuxWirelessPlatform {
             )?;
             *self.planned_ssid.lock().unwrap() = Some(ssid);
             Ok(self.observe_hotspot(manager))
+        } else if self.options.settings.network_mode == "external-ap" {
+            // Another component owns this AP (com.tbwj.gateway): observe it, never build
+            // or tear it down, and never register it with the hotspot lifetime.
+            let passphrase = self
+                .options
+                .settings
+                .shared_wifi_networks
+                .first()
+                .map(|n| n.password.clone())
+                .unwrap_or_default();
+            let manager: Arc<dyn WirelessHotspotManager> = Arc::new(
+                crate::network::external_ap_manager::ExternalApManager::new(
+                    self.options.wifi_interface.clone(),
+                    passphrase,
+                    crate::network::external_ap_manager::security_from_setting(
+                        &self.options.settings.hotspot_security,
+                    ),
+                    std::path::PathBuf::from("/sys/class/net"),
+                ),
+            );
+            if let Ok(info) = manager.start(Duration::from_secs(5)) {
+                *self.planned_ssid.lock().unwrap() = Some(info.ssid);
+            }
+            Ok(manager)
         } else {
             let hotspot = self.hotspot_lifetime.create(|| {
                 let wifi = self
@@ -295,26 +319,32 @@ impl WirelessPlatform for LinuxWirelessPlatform {
     /// At boot NetworkManager may answer nmcli only once it has set the Wi-Fi device up, so the
     /// look for a killed run's APs runs with the AP's start, not before Bluetooth.
     fn prepare_hotspot(&self) {
-        if self.options.settings.network_mode != "shared-wifi" {
+        // Only device-hotspot owns the radio: shared-wifi rides a station link and
+        // external-ap belongs to another process, so neither may clear stale hotspots.
+        if self.options.settings.network_mode == "device-hotspot" {
             self.remove_stale_hotspots();
         }
     }
     fn reset_hotspot_for_recovery(&self) -> Result<()> {
-        self.hotspot_lifetime.close()
+        if self.options.settings.network_mode == "device-hotspot" {
+            self.hotspot_lifetime.close()
+        } else {
+            Ok(())
+        }
     }
     fn planned_hotspot_ssid(&self) -> Option<String> {
         self.planned_ssid.lock().unwrap().clone()
     }
     fn hotspot_reused(&self) -> bool {
-        self.options.settings.network_mode != "shared-wifi" && self.hotspot_lifetime.reused()
+        self.options.settings.network_mode == "device-hotspot" && self.hotspot_lifetime.reused()
     }
     fn keep_hotspot_for_retry(&self) {
-        if self.options.settings.network_mode != "shared-wifi" {
+        if self.options.settings.network_mode == "device-hotspot" {
             self.hotspot_lifetime.keep_for_retry();
         }
     }
     fn cancel_hotspot_retry(&self) -> Result<()> {
-        if self.options.settings.network_mode == "shared-wifi" {
+        if self.options.settings.network_mode != "device-hotspot" {
             return Ok(());
         }
         self.hotspot_lifetime.cancel_retry()
@@ -329,7 +359,7 @@ impl WirelessPlatform for LinuxWirelessPlatform {
             .ok()
     }
     fn hotspot_down_remaining(&self) -> Duration {
-        if self.options.settings.network_mode == "shared-wifi" {
+        if self.options.settings.network_mode != "device-hotspot" {
             return Duration::ZERO;
         }
         self.hotspot_lifetime.down_remaining()
