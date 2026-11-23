@@ -950,6 +950,8 @@ impl LinuxHotspot {
             if let Err(error) = deleted {
                 // NM may already have removed the profile (including a rejected load), or
                 // deactivated it externally. Only a still-active AP makes shutdown fail.
+                // A host that does not run NetworkManager cannot answer, and then there is
+                // nothing left to keep up: treat that as already torn down.
                 let rows = command(
                     self.runner.as_ref(),
                     &[
@@ -961,7 +963,8 @@ impl LinuxHotspot {
                         "show",
                     ],
                     Duration::from_secs(10),
-                )?;
+                )
+                .unwrap_or_default();
                 if rows.lines().any(|line| {
                     let fields = crate::provision::terse_fields(line);
                     fields.len() == 3 && fields[0] == id && fields[2] == "yes"

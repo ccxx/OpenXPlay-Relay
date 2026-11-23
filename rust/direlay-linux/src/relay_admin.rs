@@ -266,7 +266,16 @@ impl LinuxRelayAdmin {
         state: Arc<PersistentState>,
         events: Arc<JsonEvents>,
     ) -> Result<Self> {
-        let runtime = crate::runtime_paths::RuntimePaths::new(&options.state_dir);
+        let mut runtime = crate::runtime_paths::RuntimePaths::new(&options.state_dir);
+        if options.settings.network_mode == "external-ap" {
+            // The AP, its dnsmasq and its NetworkManager state belong to another component.
+            // Point our own name cache into the state directory so no code path writes /etc
+            // (read-only on such hosts) or reloads a NetworkManager this host may not run.
+            runtime.network_services = false;
+            runtime.local_dns = crate::public_name::local_dns::Paths::in_dir(
+                options.state_dir.join("dnsmasq-shared.d"),
+            );
+        }
         let backends = crate::host_backends::HostBackends::linux_with_runtime_paths(
             &options,
             runtime.clone(),
