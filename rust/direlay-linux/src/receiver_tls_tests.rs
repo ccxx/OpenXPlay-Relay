@@ -129,6 +129,7 @@ fn supervisor(factory: Arc<FakeChildFactory>) -> RelaySupervisor {
         plugins: None,
         state_dir: "/state".into(),
         addresses: vec!["10.77.0.1".parse().unwrap()],
+        dns_sans: Vec::new(),
         pairing: false,
         carlink: None,
         pem_tls: None,

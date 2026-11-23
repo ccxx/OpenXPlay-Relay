@@ -46,8 +46,7 @@ impl WebTlsControl {
                     pem: settings.pem_tls.clone(),
                     default_tls: settings.default_tls.clone(),
                     sans: settings.addresses.clone(),
-                    // Names arrive with the first update; the initial set is addresses only.
-                    dns_sans: Vec::new(),
+                    dns_sans: settings.dns_sans.clone(),
                 },
                 pending: None,
             }),

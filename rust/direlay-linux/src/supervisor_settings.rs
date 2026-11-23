@@ -129,6 +129,7 @@ pub fn supervisor_settings(
         web_root: o.web_root.clone(),
         state_dir: o.state_dir.clone(),
         addresses,
+        dns_sans: o.settings.public_names.clone(),
         pairing: o.settings.require_pairing_code,
         carlink,
         pem_tls: None,

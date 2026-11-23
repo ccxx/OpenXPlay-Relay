@@ -83,6 +83,8 @@ pub struct SupervisorSettings {
     pub plugins: Option<crate::plugins::OutputPlugins>,
     pub state_dir: PathBuf,
     pub addresses: Vec<Ipv4Addr>,
+    /// DNS names the receiver certificate also covers, from settings.
+    pub dns_sans: Vec<String>,
     pub pairing: bool,
     pub carlink: Option<CarlinkSettings>,
     /// Serve this certificate for its SNI name while both files exist.
@@ -161,6 +163,19 @@ impl SupervisorSettings {
         ips.dedup();
         for ip in ips.into_iter().filter(|_| self.web_port != 0) {
             args.extend(["--tls-san".into(), ip.to_string().into()]);
+        }
+        // Names come from configuration: the component that owns the AP usually already
+        // publishes one, and a head unit typing it must find it in the certificate.
+        let mut names: Vec<String> = self
+            .dns_sans
+            .iter()
+            .map(|n| n.trim().to_ascii_lowercase())
+            .filter(|n| !n.is_empty())
+            .collect();
+        names.sort();
+        names.dedup();
+        for name in names.into_iter().filter(|_| self.web_port != 0) {
+            args.extend(["--tls-san".into(), name.into()]);
         }
         if self.pairing && self.web_port != 0 {
             args.push("--pairing".into());
@@ -1076,6 +1091,7 @@ mod band_tests {
                 plugins: None,
                 state_dir: dir.clone(),
                 addresses: vec![],
+                dns_sans: Vec::new(),
                 pairing: false,
                 pem_tls: None,
                 default_tls: None,
@@ -1358,6 +1374,7 @@ mod tls_tests {
             plugins: None,
             state_dir: dir.into(),
             addresses: vec![Ipv4Addr::new(10, 77, 0, 1), Ipv4Addr::new(192, 168, 1, 2)],
+            dns_sans: Vec::new(),
             pairing: false,
             carlink: None,
             pem_tls: None,

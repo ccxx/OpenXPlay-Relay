@@ -860,6 +860,7 @@ fn supervisor_settings() -> supervisor::SupervisorSettings {
         plugins: None,
         state_dir: "/var/lib/openxplay".into(),
         addresses: vec!["192.168.1.78".parse().unwrap()],
+        dns_sans: Vec::new(),
         pairing: true,
         carlink: None,
         pem_tls: None,
