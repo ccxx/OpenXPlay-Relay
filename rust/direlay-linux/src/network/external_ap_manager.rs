@@ -11,7 +11,12 @@
 use crate::network::wireless_hotspot_manager::{WirelessHotspotInfo, WirelessHotspotManager};
 use crate::Result;
 use carplay_iap2::Iap2WirelessSecurity;
-use std::{net::Ipv4Addr, path::PathBuf, process::Command, time::Duration};
+use std::{
+    net::Ipv4Addr,
+    path::PathBuf,
+    process::Command,
+    time::{Duration, Instant},
+};
 
 /// True when the interface exists and currently runs as an access point.
 pub fn interface_in_ap_mode(interface: &str) -> bool {
@@ -109,36 +114,52 @@ impl ExternalApManager {
 }
 
 impl WirelessHotspotManager for ExternalApManager {
-    fn start(&self, _timeout: Duration) -> Result<WirelessHotspotInfo> {
+    /// Waits for the owner's AP to come up, then reports it.
+    ///
+    /// The interface is expected to appear and reach AP mode on another component's schedule, so
+    /// polling here absorbs a slow startup inside one attempt. Failures name the hotspot so the
+    /// controller classifies them as `hotspot_not_ready`, which retries with backoff and then
+    /// waits for the reading to flip back to AP instead of giving up.
+    fn start(&self, timeout: Duration) -> Result<WirelessHotspotInfo> {
         if !self.net_root.join(&self.interface).join("address").exists() {
             return Err(std::io::Error::other(format!(
-                "external AP interface {} is absent",
+                "external hotspot interface {} is absent",
                 self.interface
             ))
             .into());
         }
-        let (ssid, channel) = self.iw_info();
-        let ssid = ssid.ok_or_else(|| {
-            std::io::Error::other(format!("external AP {} has no SSID", self.interface))
-        })?;
-        let mac = self.mac();
-        Ok(WirelessHotspotInfo {
-            ssid,
-            passphrase: self.passphrase.clone(),
-            channel: channel.unwrap_or(0),
-            security: self.security,
-            host_address: self.ipv4(),
-            bssid: mac.clone(),
-            access_point_bssid: mac,
-            interface_name: Some(self.interface.clone()),
-        })
+        let deadline = Instant::now() + timeout;
+        loop {
+            let (ssid, channel) = self.iw_info();
+            if let Some(ssid) = ssid.filter(|s| !s.is_empty()) {
+                let mac = self.mac();
+                return Ok(WirelessHotspotInfo {
+                    ssid,
+                    passphrase: self.passphrase.clone(),
+                    channel: channel.unwrap_or(0),
+                    security: self.security,
+                    host_address: self.ipv4(),
+                    bssid: mac.clone(),
+                    access_point_bssid: mac,
+                    interface_name: Some(self.interface.clone()),
+                });
+            }
+            if Instant::now() >= deadline {
+                return Err(std::io::Error::other(format!(
+                    "external hotspot {} has no SSID yet: its owner has not brought the AP up",
+                    self.interface
+                ))
+                .into());
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
     }
 
     fn validate_ready(&self) -> Result<()> {
         match self.mode().as_deref() {
             Some("AP") => Ok(()),
             other => Err(std::io::Error::other(format!(
-                "external AP interface {} is not in AP mode ({other:?})",
+                "external hotspot interface {} is not in AP mode ({other:?})",
                 self.interface
             ))
             .into()),

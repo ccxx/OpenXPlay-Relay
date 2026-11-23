@@ -273,9 +273,10 @@ impl WirelessPlatform for LinuxWirelessPlatform {
                     std::path::PathBuf::from("/sys/class/net"),
                 ),
             );
-            if let Ok(info) = manager.start(Duration::from_secs(5)) {
-                *self.planned_ssid.lock().unwrap() = Some(info.ssid);
-            }
+            // The SSID is what iAP2 hands the iPhone, so an AP that is not up yet must fail this
+            // attempt instead of starting a session that cannot tell the phone where to join.
+            let info = manager.start(Duration::from_secs(5))?;
+            *self.planned_ssid.lock().unwrap() = Some(info.ssid);
             Ok(manager)
         } else {
             let hotspot = self.hotspot_lifetime.create(|| {
