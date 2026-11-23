@@ -56,6 +56,9 @@ pub struct Settings {
     pub receiver_port: u16,
     pub require_pairing_code: bool,
     pub output: String,
+    /// Extra DNS names the receiver certificate covers, so the head unit can open the page by
+    /// name instead of only by address. The owner of the AP usually already publishes one.
+    pub public_names: Vec<String>,
     pub tesla_browser: crate::tesla_address::Mode,
     pub tesla_virtual_address: String,
     pub tesla_public_address: String,
@@ -152,6 +155,7 @@ impl Default for Settings {
             receiver_port: 8443,
             require_pairing_code: false,
             output: "web".into(),
+            public_names: Vec::new(),
             tesla_browser: Default::default(),
             tesla_virtual_address: "169.254.88.1".into(),
             tesla_public_address: "169.254.88.1".into(),

@@ -16,6 +16,8 @@ pub(super) struct Settings {
     pub pem: Option<PemTls>,
     pub default_tls: Option<crate::identity::tls::DefaultTls>,
     pub sans: Vec<Ipv4Addr>,
+    /// Names the page is served under, beyond the fixed local ones. Empty until configured.
+    pub dns_sans: Vec<String>,
 }
 struct Pending {
     id: String,
@@ -44,6 +46,8 @@ impl WebTlsControl {
                     pem: settings.pem_tls.clone(),
                     default_tls: settings.default_tls.clone(),
                     sans: settings.addresses.clone(),
+                    // Names arrive with the first update; the initial set is addresses only.
+                    dns_sans: Vec::new(),
                 },
                 pending: None,
             }),
@@ -107,6 +111,13 @@ impl WebTlsControl {
         ]
         .into_iter()
         .chain(settings.sans.iter().map(ToString::to_string))
+        .chain(
+            settings
+                .dns_sans
+                .iter()
+                .map(|n| n.trim().to_ascii_lowercase())
+                .filter(|n| !n.is_empty()),
+        )
         .collect();
         let mut request = json!({"type":"web-tls","id":id,"trusted":trusted,"sans":sans});
         // W15: optional default material is separate from trusted SNI and generated SANs.

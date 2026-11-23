@@ -145,13 +145,48 @@ fn supervisor(factory: Arc<FakeChildFactory>) -> RelaySupervisor {
     supervisor
 }
 #[test]
+fn configured_names_join_the_addresses_in_the_sans() {
+    let (factory, rx) = FakeChildFactory::new();
+    let supervisor = supervisor(factory.clone());
+    thread::scope(|scope| {
+        let update = scope.spawn(|| {
+            supervisor.update_web_tls(
+                None,
+                vec![Ipv4Addr::new(192, 168, 4, 1)],
+                vec!["b.twanjia.com".into(), "  ".into()],
+                Duration::from_secs(2),
+            )
+        });
+        let request = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let sans: Vec<String> = request.value["sans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect();
+        assert!(sans.contains(&"openxplay-car.local".to_owned()), "{sans:?}");
+        assert!(sans.contains(&"192.168.4.1".to_owned()), "{sans:?}");
+        // A configured name is what the head unit types, so it must be in the certificate.
+        assert!(sans.contains(&"b.twanjia.com".to_owned()), "{sans:?}");
+        // A blank entry would otherwise widen the certificate with an empty name.
+        assert!(!sans.iter().any(|s| s.trim().is_empty()), "{sans:?}");
+        (request.events)(
+            json!({"type":"web-tls","id":request.value["id"],"applied":true,"trustedName":null}),
+        );
+        request.applied();
+        update.join().unwrap().unwrap();
+    });
+}
+#[test]
 fn matching_success_updates_the_complete_set_and_automatic_retry_arguments() {
     let (factory, rx) = FakeChildFactory::new();
     let mut supervisor = supervisor(factory.clone());
     let sans: Vec<_> = (1..=16).map(|n| Ipv4Addr::new(192, 168, 1, n)).collect();
     thread::scope(|scope| {
         let update =
-            scope.spawn(|| supervisor.update_web_tls(None, sans.clone(), Duration::from_secs(2)));
+            scope.spawn(|| {
+                supervisor.update_web_tls(None, sans.clone(), Vec::new(), Duration::from_secs(2))
+            });
         let request = rx.recv_timeout(Duration::from_secs(2)).unwrap();
         assert_eq!(request.value["sans"].as_array().unwrap().len(), 19);
         assert_eq!(request.value["sans"][0], "openxplay-linux.local");
@@ -191,6 +226,7 @@ fn rejection_timeout_wrong_name_and_late_reply_preserve_the_served_set() {
                 supervisor.update_web_tls(
                     None,
                     vec![Ipv4Addr::new(3, 3, 3, 1)],
+                    Vec::new(),
                     Duration::from_millis(80),
                 )
             });
@@ -232,6 +268,7 @@ fn replacing_the_child_wakes_the_waiter_and_rejects_old_generation_replies() {
             supervisor.update_web_tls(
                 None,
                 vec![Ipv4Addr::new(3, 3, 3, 1)],
+                Vec::new(),
                 Duration::from_secs(2),
             )
         });
@@ -253,6 +290,7 @@ fn replacing_the_child_wakes_the_waiter_and_rejects_old_generation_replies() {
             supervisor.update_web_tls(
                 None,
                 vec![Ipv4Addr::new(3, 3, 3, 2)],
+                Vec::new(),
                 Duration::from_secs(2),
             )
         });
@@ -286,6 +324,7 @@ fn default_certificate_requires_matching_fingerprint_and_keeps_trusted_sni_separ
                 supervisor.update_web_tls_with_default(
                     None,
                     vec![],
+                    Vec::new(),
                     Some(base.clone()),
                     Duration::from_secs(2),
                 )
@@ -305,7 +344,13 @@ fn default_certificate_requires_matching_fingerprint_and_keeps_trusted_sni_separ
     }
     thread::scope(|scope| {
         let update = scope.spawn(|| {
-            supervisor.update_web_tls_with_default(None, vec![], None, Duration::from_secs(2))
+            supervisor.update_web_tls_with_default(
+                None,
+                vec![],
+                Vec::new(),
+                None,
+                Duration::from_secs(2),
+            )
         });
         let request = rx.recv_timeout(Duration::from_secs(2)).unwrap();
         assert_eq!(request.value["default"], Value::Null);

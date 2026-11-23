@@ -716,14 +716,22 @@ impl RelaySupervisor {
         &self,
         pem: Option<PemTls>,
         sans: Vec<Ipv4Addr>,
+        dns_sans: Vec<String>,
         timeout: Duration,
     ) -> io::Result<()> {
-        self.update_web_tls_with_default(pem, sans, self.web_tls.settings().default_tls, timeout)
+        self.update_web_tls_with_default(
+            pem,
+            sans,
+            dns_sans,
+            self.web_tls.settings().default_tls,
+            timeout,
+        )
     }
     pub fn update_web_tls_with_default(
         &self,
         pem: Option<PemTls>,
         sans: Vec<Ipv4Addr>,
+        dns_sans: Vec<String>,
         default_tls: Option<crate::identity::tls::DefaultTls>,
         timeout: Duration,
     ) -> io::Result<()> {
@@ -734,6 +742,7 @@ impl RelaySupervisor {
             receiver_tls_control::Settings {
                 pem,
                 sans,
+                dns_sans,
                 default_tls,
             },
         )?;
