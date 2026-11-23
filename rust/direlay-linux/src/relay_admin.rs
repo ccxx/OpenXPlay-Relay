@@ -524,6 +524,13 @@ impl LinuxRelayAdmin {
             *provision = None;
             *interface = options.wifi_interface.clone();
         }
+        // external-ap: the AP, its dnsmasq and the station belong to another component
+        // (com.tbwj.gateway). Building a NetworkManager provisioner here reaches nmcli on a
+        // host that may not run NetworkManager (exit 8) and buys nothing. The interface is
+        // already synced above, so later calls see no change and do not cycle the controller.
+        if options.settings.network_mode == "external-ap" {
+            return Ok(false);
+        }
         if provision.is_none() {
             let mac = match std::fs::read_to_string(
                 self.net_root.join(&options.wifi_interface).join("address"),
@@ -794,7 +801,24 @@ impl LinuxRelayAdmin {
                         );
                         let result = shell.operation(op);
                         if let Err(e) = result {
-                            shell.events.emit("error", &serde_json::json!({"message": if network { "error.networks".to_string() } else { e.to_string() }}));
+                            // The message stays an i18n key for the page, but the cause goes along
+                            // so a field log can be read without reproducing the failure.
+                            let secrets: Vec<String> = shell
+                                .settings
+                                .lock()
+                                .unwrap()
+                                .shared_wifi_networks
+                                .iter()
+                                .map(|n| n.password.clone())
+                                .collect();
+                            let detail = crate::failure_text::redact(
+                                &crate::failure_text::error_text(&e),
+                                &secrets,
+                            );
+                            shell.events.emit("error", &serde_json::json!({
+                                "message": if network { "error.networks".to_string() } else { e.to_string() },
+                                "detail": detail,
+                            }));
                         }
                     }
                     drop(lifecycle);
@@ -2017,6 +2041,7 @@ impl LinuxRelayAdmin {
             .public_name
             .certificate_snapshot(&self.options.state_dir)?;
         let sans = self.receiver_sans()?;
+        let dns_sans = self.settings.lock().unwrap().public_names.clone();
         let default_tls = crate::identity::tls::snapshot(&self.options.state_dir)?;
         let tesla = crate::tesla_address::tls_address(&self.settings.lock().unwrap());
         let pem = served.as_ref().map(|s| PemTls {
@@ -2034,6 +2059,7 @@ impl LinuxRelayAdmin {
                 supervisor.update_web_tls_with_default(
                     pem,
                     sans.clone(),
+                    dns_sans.clone(),
                     default_tls.clone(),
                     timeout,
                 )
